@@ -30,3 +30,7 @@ workflows:
                 from: dist/
                 to: s3://sample-app-vue
                 arguments: --recursive
+          filters:
+            branches:
+              only:
+                - main
