@@ -24,13 +24,13 @@ workflows:
       - node/test:
           version: "16.19"
           # after the node/test job completes, build the dist packages and save them to a workspace
-          post-steps:
-            - run: npm run build
-            - aws-s3/copy:
-                from: dist/
-                to: s3://sample-app-vue
-                arguments: --recursive
-          filters:
-            branches:
-              only:
-                - main
+          # post-steps:
+          #   - run: npm run build
+          #   - aws-s3/copy:
+          #       from: dist/
+          #       to: s3://sample-app-vue
+          #       arguments: --recursive
+          # filters:
+          #   branches:
+          #     only:
+          #       - main
