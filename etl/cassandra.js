@@ -29,7 +29,7 @@ function valuesFromProduct(product) {
     product.slogan,
     product.description,
     product.category,
-    parseFloat(product.default_price),
+    product.default_price === "null" ? null : parseFloat(product.default_price),
   ];
 }
 
@@ -37,14 +37,20 @@ function readAndInsertProducts() {
   const query =
     "INSERT INTO sdc.products (id, name, slogan, description, category, default_price) VALUES (?, ?, ?, ?, ?, ?);";
   var num = 0;
+  var queries = [];
 
-  fs.createReadStream(path.join(__dirname, "./product.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/product.csv"))
     .pipe(csv())
     .on("data", (d) => {
-      client.execute(query, valuesFromProduct(d), { prepared: true });
+      queries.push({ query, params: valuesFromProduct(d) });
+      if (queries.length > 100) {
+        client.batch(queries, { prepare: true });
+        queries = [];
+      }
       num++;
     })
     .on("end", () => {
+      if (queries.length > 0) client.batch(queries, { prepare: true });
       console.log("finished processing products. Rows:", num);
       readAndInsertFeatures();
     });
@@ -65,11 +71,6 @@ function readAndInsertFeatures() {
   var num = 0;
 
   async function send(queries) {
-    // const queries = features.map((feature) => ({
-    //   query: "UPDATE sdc.products SET features = features + ? WHERE id=?;",
-    //   params: [[feature], product_id],
-    // }));
-
     try {
       client.batch(queries, { prepare: true });
     } catch (err) {
@@ -77,7 +78,7 @@ function readAndInsertFeatures() {
     }
   }
 
-  fs.createReadStream(path.join(__dirname, "./features.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/features.csv"))
     .pipe(csv())
     .on("data", (d) => {
       num++;
@@ -90,7 +91,8 @@ function readAndInsertFeatures() {
         features = [];
       }
       product_id = d.product_id;
-      features.push(valuesFromFeature(d));
+      const value = valuesFromFeature(d);
+      features.push(value);
     })
     .on("end", async () => {
       console.log("finished processing features. Rows:", num);
@@ -119,12 +121,13 @@ function readAndInsertStyles() {
   var batchReqs = [];
   var num = 0;
 
-  fs.createReadStream(path.join(__dirname, "./styles.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/styles.csv"))
     .pipe(csv())
     .on("data", (d) => {
       num++;
       styleIdToProductId[d.id] = d.productId;
-      batchReqs.push({ query, params: valuesFromStyle(d) });
+      const value = valuesFromStyle(d);
+      batchReqs.push({ query, params: value });
       if (batchReqs.length > 100) {
         client.batch(batchReqs, { prepare: true });
         batchReqs = [];
@@ -151,7 +154,7 @@ function valuesFromSku(sku) {
 function readAndInsertSkus() {
   var skus = [];
   var styleId = undefined;
-  const query = `UPDATE sdc.styles_by_product_id SET skus=? WHERE product_id=?`;
+  const query = `UPDATE sdc.styles_by_product_id SET skus=? WHERE product_id=? AND id=?;`;
   var queries = [];
   var num = 0;
 
@@ -171,12 +174,15 @@ function readAndInsertSkus() {
     } */
   }
 
-  fs.createReadStream(path.join(__dirname, "./skus.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/skus.csv"))
     .pipe(csv())
     .on("data", (d) => {
       num++;
       if (skus.length > 0 && d.styleId !== styleId) {
-        queries.push({ query, params: [skus, styleIdToProductId[styleId]] });
+        queries.push({
+          query,
+          params: [skus, styleIdToProductId[styleId], styleId],
+        });
         if (queries.length > 100) {
           send(queries);
           queries = [];
@@ -190,7 +196,10 @@ function readAndInsertSkus() {
     .on("end", async () => {
       console.log("finished processing skus. Rows:", num);
       if (skus.length > 0)
-        queries.push({ query, params: [skus, styleIdToProductId[styleId]] });
+        queries.push({
+          query,
+          params: [skus, styleIdToProductId[styleId], styleId],
+        });
       if (queries.length > 0) send(queries);
       readAndInsertPhotos();
     });
@@ -199,7 +208,8 @@ function readAndInsertSkus() {
 function valuesFromPhoto(photo) {
   return {
     url: photo.url,
-    thumbnail_url: photo.thumbail_url,
+    thumbnail_url:
+      photo.thumbail_url === "null" ? photo.url : photo.thumbnail_url,
   };
 }
 
@@ -208,7 +218,7 @@ function readAndInsertPhotos() {
   var styleId = undefined;
   var queries = [];
   const query =
-    "UPDATE sdc.styles_by_product_id SET photos = ? WHERE product_id=?;";
+    "UPDATE sdc.styles_by_product_id SET photos = ? WHERE product_id=? AND id=?;";
   var num = 0;
 
   async function send(queries) {
@@ -225,12 +235,15 @@ function readAndInsertPhotos() {
     }
   }
 
-  fs.createReadStream(path.join(__dirname, "./photos.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/photos.csv"))
     .pipe(csv())
     .on("data", (d) => {
       num++;
       if (photos.length > 0 && d.styleId !== styleId) {
-        queries.push({ query, params: [photos, styleId] });
+        queries.push({
+          query,
+          params: [photos, styleIdToProductId[styleId], styleId],
+        });
         if (queries.length > 5) {
           send(queries);
           queries = [];
@@ -243,7 +256,11 @@ function readAndInsertPhotos() {
     })
     .on("end", () => {
       console.log("finished processing photos. Rows:", num);
-      if (photos > 0) queries.push({ query, params: [photos, styleId] });
+      if (photos > 0)
+        queries.push({
+          query,
+          params: [photos, styleIdToProductId[styleId], styleId],
+        });
       if (queries.length > 0) send(queries);
       readAndInsertRelated();
     });
@@ -257,18 +274,23 @@ function readAndInsertRelated() {
   var num = 0;
 
   var send = (queries) => {
-    try {
-      client.batch(queries, { prepare: true });
-    } catch (err) {
-      console.log("error encountered when trying to send related");
-    }
+    return new Promise(async (resolve, reject) => {
+      try {
+        await client.batch(queries, { prepare: true });
+        resolve();
+      } catch (err) {
+        console.log("queries at error", queries);
+        console.log("error encountered when trying to send related", err);
+        reject(err);
+      }
+    });
   };
 
-  fs.createReadStream(path.join(__dirname, "./related.csv"))
+  fs.createReadStream(path.join(__dirname, "./data/related.csv"))
     .pipe(csv())
     .on("data", (d) => {
       num++;
-      if (related.length > 0 && d.productId !== productId) {
+      if (related.size > 0 && d.current_product_id !== productId) {
         queries.push({ query, params: [productId, related] });
         if (queries.length > 100) {
           send(queries);
@@ -278,16 +300,20 @@ function readAndInsertRelated() {
       }
 
       productId = d.current_product_id;
-      related.add(related);
+      related.add(d.related_product_id);
     })
-    .on("end", () => {
+    .on("end", async () => {
       console.log("finished processing related. Rows:", num);
-      if (related.length > 0) send(related, productId);
-      const done = new Date();
-      console.log("done in", done - start);
-      console.log("start", start);
-      console.log("done", done);
-      client.shutdown();
+      if (related.size > 0)
+        queries.push({ query, params: [productId, related] });
+      if (queries.length > 0) {
+        send(queries).finally(() => {
+          const done = new Date();
+          console.log("done in", done - start);
+          console.log("start", start);
+          console.log("done", done);
+        });
+      }
     });
 }
 
@@ -298,25 +324,23 @@ async function dropAndRecreateTables() {
   );
   await client.execute("USE sdc;");
   await client.execute("CREATE TYPE feature (feature text, value text);");
-  await client.execute(
-    "CREATE TYPE sku (id bigint, quantity bigint, size text);"
-  );
+  await client.execute("CREATE TYPE sku (id int, quantity int, size text);");
   await client.execute("CREATE TYPE photo (thumbnail_url text, url text);");
   await client.execute(
-    "CREATE TABLE products (id bigint, name text, slogan text, description text, category text, default_price double, features list<frozen<feature>>, PRIMARY KEY(id));"
+    "CREATE TABLE products (id int, name text, slogan text, description text, category text, default_price float, features list<frozen<feature>>, PRIMARY KEY(id));"
   );
   await client.execute(
-    "CREATE TABLE styles_by_product_id (product_id bigint, id bigint, name text, original_price double, sale_price double, default boolean, photos list<frozen<photo>>, skus list<frozen<sku>>, PRIMARY KEY(product_id));"
+    "CREATE TABLE styles_by_product_id (product_id int, id int, name text, original_price float, sale_price float, default boolean, photos list<frozen<photo>>, skus list<frozen<sku>>, PRIMARY KEY((product_id), id));"
   );
 
   await client.execute(
-    "CREATE TABLE related_by_product_id (product_id bigint, related set<bigint>, PRIMARY KEY(product_id));"
+    "CREATE TABLE related_by_product_id (product_id int, related set<int>, PRIMARY KEY(product_id));"
   );
 }
 
 let styleIdToProductId = {};
 var start = new Date();
-// readAndInsertFeatures();
+// readAndInsertPhotos();
 
 dropAndRecreateTables().then(() => {
   console.log("insdie here");

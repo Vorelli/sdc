@@ -6,7 +6,7 @@ const headers = {
 }
 
 let getProductById = (id) => {
-  return axios.get(`https://app-hrsei-api.herokuapp.com/api/fec2/hr-rfe/products/${id}/styles`, { headers })
+  return axios.get(`http://73.112.222.190:3000/products/${id}/styles`, { headers })
     .then(response => {
       return response.data
     })
@@ -16,7 +16,7 @@ let getProductById = (id) => {
 }
 
 let getInfoById = (id) => {
-  return axios.get(`https://app-hrsei-api.herokuapp.com/api/fec2/hr-rfe/products/${id}`, { headers })
+  return axios.get(`http://73.112.222.190:3000/products/${id}`, { headers })
     .then(response => {
       return response.data
     })
@@ -26,7 +26,7 @@ let getInfoById = (id) => {
 }
 
 let getInfoByIdRelated = (id) => {
-  return axios.get(`https://app-hrsei-api.herokuapp.com/api/fec2/hr-rfe/products/${id}/related`, { headers })
+  return axios.get(`http://73.112.222.190:3000/products/${id}/related`, { headers })
     .then(response => {
       return response.data
     })
@@ -52,7 +52,7 @@ let loadCarousel = (id) => {
   var ratings = []
 
   let getInfoByIdRelated = (id) => {
-    return axios.get(`https://app-hrsei-api.herokuapp.com/api/fec2/hr-rfe/products/${id}/related`, { headers })
+    return axios.get(`http://73.112.222.190:3000/products/${id}/related`, { headers })
       .then((response) => {
         // console.log('related request', response.data)
         for (var i = 0; i<response.data.length;i++) {

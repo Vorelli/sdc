@@ -29,7 +29,7 @@ const headers = {
 
 
   let getProductById = (id) => {
-    return axios.get(`https://app-hrsei-api.herokuapp.com/api/fec2/hr-rfe/products/${id}/styles`, { headers })
+    return axios.get(`http://73.112.222.190:3000/products/${id}/styles`, { headers })
       .then(response => {
         return response.data
       })
