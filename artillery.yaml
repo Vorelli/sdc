@@ -1,0 +1,11 @@
+config:
+  target: "http://192.168.0.200:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 1000
+      name: Warm up
+scenarios:
+  - name: "Hit products"
+    flow:
+      - get:
+          url: "/products/1"
